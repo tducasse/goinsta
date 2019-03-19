@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 
-	response "github.com/tducasse/goinsta/response"
+	response "github.com/wakenn/goinsta/response"
 )
 
 type Informations struct {

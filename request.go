@@ -2,11 +2,14 @@ package goinsta
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type reqOptions struct {
@@ -65,7 +68,8 @@ func (insta *Instagram) sendRequest(o *reqOptions) (body []byte, err error) {
 	req.Header.Set("User-Agent", GOINSTA_USER_AGENT)
 
 	client := &http.Client{
-		Jar: insta.Cookiejar,
+		Jar:     insta.Cookiejar,
+		Timeout: time.Minute * 3,
 	}
 
 	if insta.Proxy != "" {
@@ -95,21 +99,50 @@ func (insta *Instagram) sendRequest(o *reqOptions) (body []byte, err error) {
 		}
 	}
 
+	// if insta.Proxy != "" {
+	// 	if sz := respSize(resp); sz > 15000 {
+	// 		log.Println("Large hit:", GOINSTA_API_URL+o.Endpoint, sz)
+	// 	}
+	// }
+
 	body, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return
 	}
 
 	if resp.StatusCode != 200 && !o.IgnoreStatus {
-		e := fmt.Errorf("Invalid status code %s", string(body))
+		e := fmt.Errorf("Invalid status code %s %d", string(body), resp.StatusCode)
 		switch resp.StatusCode {
 		case 400:
-			e = ErrLoggedOut
+			var load ErrorLoad
+			json.Unmarshal(body, &load)
+			if load.ErrorType == "bad_password" || load.ErrorType == "invalid_user" || load.ErrorType == "unusable_password" {
+				e = ErrBadPassword
+			} else if load.ErrorType == "checkpoint_challenge_required" {
+				e = ErrChallenge
+			} else if load.Message == "Not authorized to view user" {
+				e = ErrPrivate
+			} else {
+				e = ErrLoggedOut
+				log.Println("Logged out!", load.ErrorType, string(body))
+			}
+		case 403:
+			if strings.Contains(strings.ToLower(string(body)), "login_required") {
+				e = ErrLoggedOut
+			}
 		case 404:
 			e = ErrNotFound
 		}
-		return nil, e
+		return body, e
 	}
 
 	return body, err
+}
+
+func respSize(resp *http.Response) int {
+	var buf bytes.Buffer
+	buf.ReadFrom(resp.Body)
+	resp.Body.Close()
+	resp.Body = ioutil.NopCloser(&buf)
+	return buf.Len()
 }

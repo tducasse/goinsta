@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/tducasse/goinsta/uuid"
+	"github.com/wakenn/goinsta/uuid"
 )
 
 const (
